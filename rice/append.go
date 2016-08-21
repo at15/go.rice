@@ -159,11 +159,15 @@ func operationAppend(pkgs []*build.Package) {
 		os.Exit(1)
 	}
 
-	// Disable zip -A because it fails on windows
-	// zipA := exec.Command("zip", "-A", binfileName)
-	// err = zipA.Run()
-	// if err != nil {
-	// 	fmt.Printf("Error setting zip offset: %s\n", err)
-	// 	os.Exit(1)
-	// }
+	// Disable zip -A on windows
+	if runtime.GOOS != "windows" {
+		zipA := exec.Command("zip", "-A", binfileName)
+		err = zipA.Run()
+		if err != nil {
+			fmt.Printf("Error setting zip offset: %s\n", err)
+			os.Exit(1)
+		}
+	} else {
+		verbosef("zip -A is disabled on windows")
+	}
 }
