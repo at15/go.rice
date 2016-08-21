@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	ignore "github.com/codeskyblue/dockerignore"
 	"github.com/daaku/go.zipexe"
 )
 
@@ -82,6 +83,14 @@ func operationAppend(pkgs []*build.Package) {
 
 			// walk box path's and insert files
 			boxPath := filepath.Clean(filepath.Join(pkg.Dir, boxname))
+			// only support ignore file at box root
+			patterns, err := ignore.ReadIgnoreFile(filepath.Join(boxPath, ".riceignore"))
+			if err != nil {
+				verbosef("can't read .riceignore %s", err.Error())
+				patterns = nil
+			} else {
+				verbosef("patterns read from .riceignore %v", patterns)
+			}
 			filepath.Walk(boxPath, func(path string, info os.FileInfo, err error) error {
 				if info == nil {
 					fmt.Printf("Error: box \"%s\" not found on disk\n", path)
@@ -89,6 +98,28 @@ func operationAppend(pkgs []*build.Package) {
 				}
 				// create zipFilename
 				zipFileName := filepath.Join(appendedBoxName, strings.TrimPrefix(path, boxPath))
+				// check if the file is ignored
+				if patterns != nil {
+					relativePath := strings.TrimPrefix(path, boxPath)
+					// change all windows \ to /
+					relativePath = strings.Replace(relativePath, "\\", "/", -1)
+					relativePath = strings.TrimPrefix(relativePath, "/")
+					isSkip, _ := ignore.Matches(relativePath, patterns)
+					// FIXME: it is quite strange that files under the directory is not exclueded
+					// when using ignore.Matches ('Matching is done using Go’s filepath.Match rules')
+					// ie: .riceignore -> node_modules
+					//     node_modules/async/README.md -> NOT ignored
+					// maybe use node_modules/*
+					if isSkip && info.IsDir() {
+						verbosef("ignore directory %s", relativePath)
+						return filepath.SkipDir
+					}
+					if isSkip {
+						verbosef("ignore file %s", relativePath)
+						return nil
+					}
+					verbosef("not ignored %s", relativePath)
+				}
 				// write directories as empty file with comment "dir"
 				if info.IsDir() {
 					_, err := zipWriter.CreateHeader(&zip.FileHeader{
